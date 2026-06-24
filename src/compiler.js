@@ -1,5 +1,9 @@
 import fs from 'fs';
 import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 export class ZenithCompiler {
   constructor(options = {}) {
@@ -69,20 +73,20 @@ export const tools = [ ${toolsExport} ];
   copyStaticAssets() {
     fs.mkdirSync(path.join(this.distDir, 'public', '__zenith'), { recursive: true });
 
-    // Copy client runtime
-    const clientPath = path.join(this.srcDir, 'runtime/client.js');
+    // Copy client runtime (resolve from package's own src directory)
+    const clientPath = path.join(__dirname, 'runtime/client.js');
     if (fs.existsSync(clientPath)) {
       fs.copyFileSync(clientPath, path.join(this.distDir, 'public/zenith-client.js'));
     }
 
     // Copy dashboard HTML
-    const dashHtmlPath = path.join(this.srcDir, 'dashboard/index.html');
+    const dashHtmlPath = path.join(__dirname, 'dashboard/index.html');
     if (fs.existsSync(dashHtmlPath)) {
       fs.copyFileSync(dashHtmlPath, path.join(this.distDir, 'public/__zenith.html'));
     }
 
     // Copy dashboard JS
-    const dashJsPath = path.join(this.srcDir, 'dashboard/dashboard.js');
+    const dashJsPath = path.join(__dirname, 'dashboard/dashboard.js');
     if (fs.existsSync(dashJsPath)) {
       fs.copyFileSync(dashJsPath, path.join(this.distDir, 'public/__zenith/dashboard.js'));
     }

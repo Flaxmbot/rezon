@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.3] - 2026-06-24
+
+### Fixed
+- Fixed a critical `ENOENT` path resolution bug in `ZenithCompiler` where framework static assets (client runtime and dashboard files) were searched for in the developer's project directory instead of the installed framework package directory.
+
 ## [1.0.2] - 2026-06-24
 
 ### Added
