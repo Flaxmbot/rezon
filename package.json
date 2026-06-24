@@ -5,7 +5,7 @@
   "type": "module",
   "main": "index.js",
   "bin": {
-    "rezon": "./bin/zenith.js"
+    "rezon": "bin/zenith.js"
   },
   "files": [
     "bin",
