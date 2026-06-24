@@ -1,0 +1,123 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 480" width="800" height="480">
+  <!-- Canvas Background -->
+  <rect width="800" height="480" rx="16" fill="#131314" stroke="rgba(255, 255, 255, 0.05)" stroke-width="1"/>
+
+  <!-- Title / Header -->
+  <g transform="translate(40, 45)">
+    <text x="0" y="0" fill="#e3e3e3" font-family="'Outfit', system-ui, -apple-system, sans-serif" font-size="20" font-weight="500" letter-spacing="-0.3px">Developer Console</text>
+    <text x="0" y="22" fill="#8e918f" font-family="'Outfit', system-ui, -apple-system, sans-serif" font-size="13">Live agent trace, tool inspector, and chat playground console served at /__zenith</text>
+  </g>
+
+  <!-- Browser Window Mock -->
+  <g transform="translate(40, 95)">
+    <!-- Browser Window Frame -->
+    <rect width="720" height="340" rx="16" fill="#131314" stroke="rgba(255, 255, 255, 0.05)" stroke-width="1"/>
+    
+    <!-- Title Bar -->
+    <g transform="translate(0, 0)">
+      <rect width="720" height="38" rx="16" fill="#1e1f20" fill-opacity="0.8"/>
+      <!-- Window Controls (Grey/Subtle) -->
+      <circle cx="20" cy="19" r="5" fill="#8e918f" fill-opacity="0.3"/>
+      <circle cx="36" cy="19" r="5" fill="#8e918f" fill-opacity="0.3"/>
+      <circle cx="52" cy="19" r="5" fill="#8e918f" fill-opacity="0.3"/>
+      
+      <!-- URL Bar -->
+      <rect x="120" y="7" width="480" height="24" rx="12" fill="#131314" stroke="rgba(255, 255, 255, 0.05)" stroke-width="1"/>
+      <text x="136" y="23" fill="#8e918f" font-family="'Fira Code', monospace" font-size="11">http://localhost:3000/__zenith</text>
+    </g>
+
+    <!-- Content Workspace -->
+    <g transform="translate(0, 38)">
+      <!-- Sidebar (Navigation Rail) -->
+      <g transform="translate(0, 0)">
+        <rect width="64" height="302" rx="0" fill="#1e1f20" stroke="rgba(255, 255, 255, 0.05)" stroke-width="0.5"/>
+        
+        <!-- Nav Icon 1 (Active: Traces) -->
+        <g transform="translate(12, 24)">
+          <rect width="40" height="40" rx="12" fill="rgba(124, 172, 248, 0.08)" stroke="rgba(124, 172, 248, 0.15)" stroke-width="1"/>
+          <!-- Flowchart / Trace icon -->
+          <path d="M14 28h12M14 20h12M14 12h12" stroke="#a8c7fa" stroke-width="1.5" stroke-linecap="round"/>
+          <circle cx="14" cy="12" r="2" fill="#a8c7fa"/>
+          <circle cx="20" cy="20" r="2" fill="#a8c7fa"/>
+          <circle cx="16" cy="28" r="2" fill="#a8c7fa"/>
+        </g>
+        
+        <!-- Nav Icon 2 (Playground) -->
+        <g transform="translate(12, 84)">
+          <!-- Chat bubble icon -->
+          <path d="M12 14h16v10l-4-3H12V14z" stroke="#8e918f" stroke-width="1.5" stroke-linejoin="round" fill="none"/>
+        </g>
+        
+        <!-- Nav Icon 3 (Inspector) -->
+        <g transform="translate(12, 144)">
+          <!-- Settings / Gear icon -->
+          <circle cx="20" cy="20" r="5" stroke="#8e918f" stroke-width="1.5" fill="none"/>
+          <path d="M20 12v2M20 26v2M12 20h2M26 20h2" stroke="#8e918f" stroke-width="1.5"/>
+        </g>
+      </g>
+
+      <!-- Main Panel (Console Traces) -->
+      <g transform="translate(80, 20)">
+        <!-- Trace Header -->
+        <g>
+          <text x="0" y="16" fill="#e3e3e3" font-family="'Outfit', system-ui, -apple-system, sans-serif" font-size="14" font-weight="500">Live Agent Execution Trace</text>
+          <rect x="520" y="-2" width="100" height="22" rx="11" fill="rgba(124, 172, 248, 0.08)" stroke="rgba(124, 172, 248, 0.15)" stroke-width="1"/>
+          <text x="570" y="13" fill="#a8c7fa" font-family="'Outfit', system-ui, -apple-system, sans-serif" font-size="10" font-weight="600" text-anchor="middle">ROUTE: /index</text>
+        </g>
+
+        <!-- Nested Timeline Log Cards -->
+        <g transform="translate(0, 36)">
+          <!-- User Message Card -->
+          <g transform="translate(0, 0)">
+            <rect width="620" height="42" rx="12" fill="#1e1f20" stroke="rgba(255, 255, 255, 0.05)" stroke-width="1"/>
+            <circle cx="24" cy="21" r="10" fill="rgba(255, 255, 255, 0.03)"/>
+            <!-- User Icon path -->
+            <path d="M21 25a3 3 0 016 0M24 19a2 2 0 110-4 2 2 0 010 4z" stroke="#8e918f" stroke-width="1.2" fill="none"/>
+            <text x="48" y="25" fill="#e3e3e3" font-family="'Outfit', system-ui, -apple-system, sans-serif" font-size="12" font-weight="500">User Query:</text>
+            <text x="124" y="25" fill="#c4c7c5" font-family="'Outfit', system-ui, -apple-system, sans-serif" font-size="12">"Show me the top 3 products under $50"</text>
+            <text x="560" y="25" fill="#8e918f" font-family="'Fira Code', monospace" font-size="10">10:42:15</text>
+          </g>
+
+          <!-- Timeline Vertical Connective Line -->
+          <line x1="24" y1="42" x2="24" y2="72" stroke="rgba(255, 255, 255, 0.05)" stroke-width="1" stroke-dasharray="2,2"/>
+
+          <!-- Tool Call Execution Card -->
+          <g transform="translate(0, 58)">
+            <rect width="620" height="66" rx="12" fill="#1e1f20" stroke="rgba(255, 255, 255, 0.05)" stroke-width="1"/>
+            <circle cx="24" cy="24" r="10" fill="rgba(255, 255, 255, 0.03)"/>
+            <!-- Tool Wrench icon path -->
+            <path d="M21 27l2-2m-1-4a2.5 2.5 0 113.5 3.5l-2.5 2.5-2.5-2.5z" stroke="#8e918f" stroke-width="1.2" fill="none"/>
+            
+            <text x="48" y="22" fill="#c4c7c5" font-family="'Outfit', system-ui, -apple-system, sans-serif" font-size="12" font-weight="500">Tool Invocation:</text>
+            <text x="146" y="22" fill="#8e918f" font-family="'Fira Code', monospace" font-size="11">searchProducts({ query: "under $50", limit: 3 })</text>
+            <text x="560" y="22" fill="#8e918f" font-family="'Fira Code', monospace" font-size="10">10:42:16</text>
+            
+            <!-- SQL query block -->
+            <rect x="48" y="34" width="556" height="22" rx="6" fill="#131314" stroke="rgba(255, 255, 255, 0.05)" stroke-width="1"/>
+            <text x="58" y="49" fill="#c4c7c5" font-family="'Fira Code', monospace" font-size="11">SELECT * FROM products WHERE price &lt; 50 LIMIT 3 <tspan fill="#c4eed0">(84ms)</tspan></text>
+          </g>
+
+          <!-- Timeline Vertical Connective Line -->
+          <line x1="24" y1="124" x2="24" y2="154" stroke="rgba(255, 255, 255, 0.05)" stroke-width="1" stroke-dasharray="2,2"/>
+
+          <!-- Model Response Card -->
+          <g transform="translate(0, 140)">
+            <rect width="620" height="42" rx="12" fill="#1e1f20" stroke="rgba(255, 255, 255, 0.05)" stroke-width="1"/>
+            <circle cx="24" cy="21" r="10" fill="rgba(255, 255, 255, 0.03)"/>
+            <!-- AI Sparkle Icon -->
+            <path d="M24 14l1 2 2 1-2 1-1 2-1-2-2-1 2-1z" fill="#8e918f"/>
+            
+            <text x="48" y="25" fill="#e3e3e3" font-family="'Outfit', system-ui, -apple-system, sans-serif" font-size="12" font-weight="500">AI Response:</text>
+            <text x="132" y="25" fill="#c4c7c5" font-family="'Outfit', system-ui, -apple-system, sans-serif" font-size="12">"Here are the top 3 products under $50: 1. Headphones..."</text>
+            <text x="560" y="25" fill="#8e918f" font-family="'Fira Code', monospace" font-size="10">10:42:17</text>
+          </g>
+        </g>
+        
+        <!-- Status Bar -->
+        <g transform="translate(0, 230)">
+          <text x="0" y="14" fill="#8e918f" font-family="'Outfit', system-ui, -apple-system, sans-serif" font-size="11">Latency: <tspan fill="#e3e3e3">2.1s</tspan>  •  Prompt Tokens: <tspan fill="#e3e3e3">420</tspan>  •  Output Tokens: <tspan fill="#e3e3e3">152</tspan></text>
+        </g>
+      </g>
+    </g>
+  </g>
+</svg>

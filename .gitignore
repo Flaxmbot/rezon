@@ -1,0 +1,13 @@
+node_modules/
+.zenith/
+zenith-db.json
+*.tgz
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp

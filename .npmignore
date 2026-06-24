@@ -1,0 +1,22 @@
+# Build artifacts
+.zenith/
+zenith-db.json
+node_modules/
+*.tgz
+
+# Examples (available on GitHub, not in npm package)
+examples/
+
+# Git
+.git/
+.gitignore
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db

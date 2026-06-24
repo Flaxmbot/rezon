@@ -1,0 +1,538 @@
+<script type="zenith">
+  agent.name = "Voyager";
+  agent.systemPrompt = "You are Voyager, a premium travel planning AI. Help users organize their trip details. Always consult the getWeather and getTopAttractions tools when asked about a destination, and present the results in a beautiful, structured format.";
+
+  let messages = [];
+  let destination = "Tokyo";
+  let prompt = "";
+
+  /**
+   * Fetch current weather details for a city
+   * @param {string} city The name of the city
+   */
+  server tool getWeather(city) {
+    const weatherData = {
+      "tokyo": "64°F (18°C), Cloudy with light drizzle",
+      "paris": "72°F (22°C), Beautiful sunny afternoon",
+      "new york": "80°F (27°C), Humid, clear skies",
+      "london": "59°F (15°C), Overcast and windy"
+    };
+    const key = city.toLowerCase().trim();
+    return weatherData[key] || "68°F (20°C), Partly cloudy weather";
+  }
+
+  /**
+   * Fetch the top 3 tourist attractions for a city
+   * @param {string} city The name of the city
+   */
+  server tool getTopAttractions(city) {
+    const attractions = {
+      "tokyo": ["Sensō-ji Temple in Asakusa", "Shibuya Crossing", "Meiji Jingu Shrine"],
+      "paris": ["Eiffel Tower", "Louvre Museum", "Notre-Dame Cathedral"],
+      "new york": ["Statue of Liberty", "Central Park", "Times Square"],
+      "london": ["British Museum", "Tower of London", "London Eye"]
+    };
+    const key = city.toLowerCase().trim();
+    return attractions[key] || ["City Center historical walk", "Local culinary market", "Scenic public park"];
+  }
+</script>
+
+<template>
+  <div class="app-container">
+    <!-- Header banner -->
+    <header class="app-header">
+      <div class="logo-area">
+        <span class="material-symbols-outlined logo-icon">explore</span>
+        <div class="logo-text">Voyager AI</div>
+      </div>
+      <div class="header-action">
+        <a href="/__zenith" target="_blank" class="btn-console">
+          <span class="material-symbols-outlined">terminal</span>
+          <span>Dev Console</span>
+        </a>
+      </div>
+    </header>
+
+    <div class="layout-body">
+      <!-- Left Sidebar: Travel Planner Settings -->
+      <aside class="planner-sidebar">
+        <div class="sidebar-section">
+          <h2>Destination</h2>
+          <p class="section-desc">Type or select a city to explore</p>
+          <div class="input-group">
+            <span class="material-symbols-outlined input-icon">location_on</span>
+            <input type="text" z-bind="destination" placeholder="Enter city..." />
+          </div>
+          <div class="presets">
+            <button z-click="destination = 'Tokyo'; agent.send('Tell me about Tokyo weather and highlights')" class="chip">Tokyo</button>
+            <button z-click="destination = 'Paris'; agent.send('Tell me about Paris weather and highlights')" class="chip">Paris</button>
+            <button z-click="destination = 'New York'; agent.send('Tell me about New York weather and highlights')" class="chip">New York</button>
+            <button z-click="destination = 'London'; agent.send('Tell me about London weather and highlights')" class="chip">London</button>
+          </div>
+        </div>
+
+        <div class="sidebar-section info-card">
+          <div class="info-header">
+            <span class="material-symbols-outlined">verified</span>
+            <h3>Framework Active</h3>
+          </div>
+          <p>This entire app runs on the compiled Zenith framework. Server-side tools are executed securely, and state variables are dynamically synchronized.</p>
+        </div>
+      </aside>
+
+      <!-- Center Chat Area -->
+      <main class="chat-main">
+        <div class="chat-messages-container">
+          <div class="welcome-message" z-if="messages.length === 0">
+            <div class="welcome-badge">
+              <span class="material-symbols-outlined sparkle">auto_awesome</span>
+              <span>Powered by Gemini</span>
+            </div>
+            <h1>Plan your next adventure</h1>
+            <p>Voyager queries weather conditions and local hotspots using secure server-side tools.</p>
+            <button z-click="agent.send('Help me plan a 3-day itinerary for Tokyo!')" class="btn-preset">
+              <span>Try: "Help me plan a 3-day itinerary for Tokyo!"</span>
+            </button>
+          </div>
+
+          <div class="chat-list">
+            <div z-each="msg in messages" class="chat-bubble-wrapper {msg.role}">
+              <div class="chat-bubble">
+                <p>{msg.content}</p>
+                <div z-if="msg.status === 'running'" class="bubble-loader">
+                  <div class="gemini-shimmer"></div>
+                  <span>Voyager is searching weather and attractions...</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Gemini-style Input Box -->
+        <div class="chat-input-bar">
+          <div class="input-wrapper">
+            <input type="text" z-bind="prompt" placeholder="Ask Voyager about your destination..." />
+            <button z-click="agent.send(prompt); prompt = ''" class="btn-submit">
+              <span class="material-symbols-outlined">send</span>
+            </button>
+          </div>
+        </div>
+      </main>
+    </div>
+  </div>
+</template>
+
+<style>
+  :root {
+    --bg-main: #131314;
+    --sidebar-bg: #1e1f20;
+    --border: rgba(255, 255, 255, 0.05);
+    --accent: #a8c7fa;
+    --accent-hover: #7cacf8;
+    --bubble-user: #2e2f30;
+    --text-primary: #e3e3e3;
+    --text-secondary: #c4c7c5;
+    --text-muted: #8e918f;
+    --font-family: 'Outfit', sans-serif;
+  }
+
+  body {
+    background-color: var(--bg-main);
+    color: var(--text-primary);
+    margin: 0;
+    font-family: var(--font-family);
+  }
+
+  .app-container {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    overflow: hidden;
+  }
+
+  /* Header styles */
+  .app-header {
+    height: 64px;
+    padding: 0 24px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background-color: var(--bg-main);
+    z-index: 10;
+  }
+
+  .logo-area {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .logo-icon {
+    font-size: 28px;
+    background: linear-gradient(135deg, #7cacf8, #c5b3e6);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+
+  .logo-text {
+    font-size: 20px;
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+
+  .btn-console {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--accent);
+    background: transparent;
+    border: 1px solid var(--border);
+    padding: 8px 16px;
+    border-radius: 20px;
+    text-decoration: none;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    transition: all 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+
+  .btn-console:hover {
+    background: rgba(168, 199, 250, 0.08);
+    border-color: var(--accent);
+  }
+
+  .btn-console span.material-symbols-outlined {
+    font-size: 18px;
+  }
+
+  /* Layout body */
+  .layout-body {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+  }
+
+  /* Sidebar */
+  .planner-sidebar {
+    width: 290px;
+    background-color: var(--sidebar-bg);
+    border-right: 1px solid var(--border);
+    padding: 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+    flex-shrink: 0;
+  }
+
+  .sidebar-section h2 {
+    font-size: 16px;
+    font-weight: 500;
+    margin-bottom: 4px;
+  }
+
+  .section-desc {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-bottom: 16px;
+  }
+
+  .input-group {
+    position: relative;
+    display: flex;
+    align-items: center;
+    margin-bottom: 12px;
+  }
+
+  .input-icon {
+    position: absolute;
+    left: 12px;
+    font-size: 18px;
+    color: var(--text-muted);
+  }
+
+  .input-group input {
+    width: 100%;
+    padding: 12px 14px 12px 38px;
+    background: var(--bg-main);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    color: white;
+    font-size: 14px;
+    outline: none;
+    font-family: var(--font-family);
+    transition: border-color 0.2s;
+  }
+
+  .input-group input:focus {
+    border-color: var(--accent);
+  }
+
+  .presets {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+
+  .presets .chip {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+    padding: 10px;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    font-family: var(--font-family);
+    transition: all 0.2s;
+  }
+
+  .presets .chip:hover {
+    background: rgba(255, 255, 255, 0.04);
+    border-color: var(--text-muted);
+  }
+
+  .info-card {
+    background: rgba(168, 199, 250, 0.04);
+    border: 1px solid rgba(168, 199, 250, 0.1) !important;
+    border-radius: 16px;
+    padding: 16px;
+    margin-top: auto;
+  }
+
+  .info-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--accent);
+    margin-bottom: 8px;
+  }
+
+  .info-header span {
+    font-size: 20px;
+  }
+
+  .info-card h3 {
+    font-size: 14px;
+    font-weight: 500;
+    margin: 0;
+  }
+
+  .info-card p {
+    font-size: 12px;
+    line-height: 1.6;
+    color: var(--text-secondary);
+    margin: 0;
+  }
+
+  /* Chat area */
+  .chat-main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    background-color: var(--bg-main);
+    position: relative;
+  }
+
+  .chat-messages-container {
+    flex: 1;
+    overflow-y: auto;
+    padding: 40px;
+  }
+
+  .welcome-message {
+    max-width: 550px;
+    margin: 100px auto 0;
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .welcome-badge {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 16px;
+    background: linear-gradient(135deg, rgba(124, 172, 248, 0.1), rgba(197, 179, 230, 0.1));
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--accent);
+    margin-bottom: 24px;
+  }
+
+  .sparkle {
+    font-size: 16px;
+    background: linear-gradient(135deg, #7cacf8, #c5b3e6);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+
+  .welcome-message h1 {
+    font-size: 32px;
+    font-weight: 500;
+    margin-bottom: 12px;
+    letter-spacing: -0.5px;
+  }
+
+  .welcome-message p {
+    color: var(--text-secondary);
+    font-size: 16px;
+    line-height: 1.6;
+    margin-bottom: 24px;
+  }
+
+  .btn-preset {
+    background: transparent;
+    color: var(--accent);
+    border: 1px solid var(--border);
+    padding: 12px 24px;
+    border-radius: 24px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    font-family: var(--font-family);
+    transition: all 0.2s;
+  }
+
+  .btn-preset:hover {
+    background: rgba(168, 199, 250, 0.08);
+    border-color: var(--accent);
+  }
+
+  .chat-list {
+    max-width: 800px;
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+  }
+
+  .chat-bubble-wrapper {
+    display: flex;
+    flex-direction: column;
+    max-width: 80%;
+  }
+
+  .chat-bubble-wrapper.user {
+    align-self: flex-end;
+  }
+
+  .chat-bubble-wrapper.model {
+    align-self: flex-start;
+    padding-left: 40px;
+    position: relative;
+  }
+
+  .chat-bubble-wrapper.model::before {
+    content: 'spark';
+    font-family: 'Material Symbols Outlined';
+    font-size: 22px;
+    position: absolute;
+    left: 8px;
+    top: 2px;
+    background: linear-gradient(135deg, #7cacf8, #c5b3e6);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+
+  .chat-bubble {
+    padding: 4px 0;
+    font-size: 16px;
+    line-height: 1.6;
+  }
+
+  .chat-bubble p {
+    margin: 0;
+    white-space: pre-wrap;
+  }
+
+  .chat-bubble-wrapper.user .chat-bubble {
+    background: var(--bubble-user);
+    color: var(--text-primary);
+    padding: 12px 20px;
+    border-radius: 20px;
+  }
+
+  .bubble-loader {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-top: 16px;
+    font-size: 13px;
+    color: var(--text-muted);
+  }
+
+  .gemini-shimmer {
+    height: 4px;
+    width: 200px;
+    border-radius: 2px;
+    background: linear-gradient(90deg, #7cacf8, #c5b3e6, #f2b8b5, #7cacf8);
+    background-size: 200% 100%;
+    animation: loadingSlide 1.5s infinite linear;
+  }
+
+  @keyframes loadingSlide {
+    0% { background-position: 0% 0%; }
+    100% { background-position: -200% 0%; }
+  }
+
+  /* Chat Input Bar (Gemini pill) */
+  .chat-input-bar {
+    padding: 24px 40px;
+    display: flex;
+    justify-content: center;
+  }
+
+  .input-wrapper {
+    position: relative;
+    display: flex;
+    align-items: center;
+    width: 100%;
+    max-width: 800px;
+    background: var(--sidebar-bg);
+    border-radius: 28px;
+    padding: 4px 6px;
+    border: 1px solid transparent;
+    transition: all 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+
+  .input-wrapper:focus-within {
+    border-color: var(--accent);
+    background: #25262a;
+  }
+
+  .input-wrapper input {
+    flex: 1;
+    background: transparent;
+    border: none;
+    color: white;
+    padding: 14px 20px;
+    font-size: 15px;
+    outline: none;
+    font-family: var(--font-family);
+  }
+
+  .btn-submit {
+    background: transparent;
+    border: none;
+    color: var(--accent);
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .btn-submit:hover {
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--accent-hover);
+  }
+
+  .btn-submit span {
+    font-size: 24px;
+  }
+</style>

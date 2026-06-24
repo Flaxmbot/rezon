@@ -1,0 +1,732 @@
+<script type="zenith">
+  agent.name = "Aura";
+  agent.systemPrompt = "You are Aura, an elite personal wealth manager and AI investment coach. Help users analyze asset allocations, run compound interest projections, and simulate stock market metrics. Always advise users based on their selected riskProfile, and consult the getSimulatedSecurityData, calculateInterestProjection, and generateAssetAllocation tools when they ask for specific numbers or allocations. Present data in clean tables or structured lists.";
+
+  let messages = [];
+  let prompt = "";
+  let riskProfile = "Medium";
+  let ticker = "AAPL";
+  let principalAmount = "10000";
+  let yearsCount = "10";
+  let calculatorResult = "No active projection. Fill inputs and calculate.";
+
+  /**
+   * Fetch simulated real-time market metrics for a stock ticker
+   * @param {string} ticker The stock ticker symbol
+   */
+  server tool getSimulatedSecurityData(ticker) {
+    const { GoogleGenerativeAI } = await import('@google/generative-ai');
+    const key = process.env.GEMINI_API_KEY;
+    const genAI = new GoogleGenerativeAI(key);
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+    
+    const promptText = `Return highly accurate simulated or real stock parameters for the ticker symbol: "${ticker}". Return ONLY a JSON object in this exact format, with no markdown tags and no extra text:
+{
+  "name": "Full Company Name",
+  "price": "$Price",
+  "pe": "P/E ratio",
+  "yield": "Dividend yield",
+  "beta": "Beta value",
+  "cap": "Market cap",
+  "outlook": "Short 1-sentence outlook"
+}`;
+
+    try {
+      const response = await model.generateContent({ contents: [{ role: 'user', parts: [{ text: promptText }] }] });
+      const text = response.response.text().trim();
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        return JSON.parse(jsonMatch[0]);
+      }
+      throw new Error("Could not parse JSON response from Gemini");
+    } catch (err) {
+      console.error("Gemini stock tool error:", err);
+      return { 
+        name: ticker.toUpperCase(), 
+        price: "$100.00", 
+        pe: "15.0", 
+        yield: "1.0%", 
+        beta: "1.00", 
+        cap: "N/A", 
+        outlook: "Temporary scanner outage. Standard neutral outlook." 
+      };
+    }
+  }
+
+  /**
+   * Calculate future value with monthly interest contributions
+   * @param {number} principal Initial starting amount
+   * @param {number} monthlyContribution Monthly savings added
+   * @param {number} rate Annual return rate percentage
+   * @param {number} years Years to grow
+   */
+  server tool calculateInterestProjection(principal, monthlyContribution, rate, years) {
+    const p = parseFloat(principal) || 0;
+    const m = parseFloat(monthlyContribution) || 0;
+    const r = (parseFloat(rate) || 7) / 100 / 12;
+    const y = parseFloat(years) || 10;
+    const months = y * 12;
+    
+    let total = p;
+    let contributions = p;
+    
+    for (let i = 0; i < months; i++) {
+      total = total * (1 + r) + m;
+      contributions += m;
+    }
+    
+    const interest = total - contributions;
+    return {
+      principal: `$${p.toLocaleString(undefined, {maximumFractionDigits: 0})}`,
+      contributions: `$${contributions.toLocaleString(undefined, {maximumFractionDigits: 0})}`,
+      interest: `$${interest.toLocaleString(undefined, {maximumFractionDigits: 0})}`,
+      total: `$${total.toLocaleString(undefined, {maximumFractionDigits: 0})}`
+    };
+  }
+
+  /**
+   * Recommend target asset weights matching a risk profile
+   * @param {string} riskProfile Low, Medium, or High risk level
+   * @param {string} targetAmount Target portfolio value goal
+   * @param {number} years Investment time horizon
+   */
+  server tool generateAssetAllocation(riskProfile, targetAmount, years) {
+    const profile = riskProfile.toLowerCase().trim();
+    let allocations = [];
+    
+    if (profile === 'low') {
+      allocations = [
+        { asset: "Bonds & Fixed Income", weight: "60%" },
+        { asset: "Large-Cap Equities", weight: "25%" },
+        { asset: "Cash & Money Market", weight: "15%" }
+      ];
+    } else if (profile === 'high') {
+      allocations = [
+        { asset: "Growth & Technology Equities", weight: "50%" },
+        { asset: "Emerging Markets / Small-Cap", weight: "25%" },
+        { asset: "Cryptocurrencies & High-Yield", weight: "15%" },
+        { asset: "Fixed Income / Cash", weight: "10%" }
+      ];
+    } else {
+      allocations = [
+        { asset: "Large-Cap & Index Equities", weight: "50%" },
+        { asset: "Corporate & Government Bonds", weight: "30%" },
+        { asset: "Growth Equities / Real Estate", weight: "20%" }
+      ];
+    }
+    
+    return { profile: riskProfile, target: targetAmount, years, allocations };
+  }
+</script>
+
+<template>
+  <div class="app-container">
+    <!-- Header banner -->
+    <header class="app-header">
+      <div class="logo-area">
+        <span class="material-symbols-outlined logo-icon">insights</span>
+        <div class="logo-text">Aura Wealth</div>
+      </div>
+      <div class="header-action">
+        <a href="/__zenith" target="_blank" class="btn-console">
+          <span class="material-symbols-outlined">terminal</span>
+          <span>Developer Console</span>
+        </a>
+      </div>
+    </header>
+
+    <div class="layout-body">
+      <!-- Left Sidebar: Wealth Dashboard Controls -->
+      <aside class="workspace-sidebar">
+        <div class="sidebar-card">
+          <div class="card-header-icon">
+            <span class="material-symbols-outlined">shield</span>
+            <h2>Risk Management</h2>
+          </div>
+          <p class="section-desc">Select profile to adapt AI recommendations</p>
+          <div class="chips-row">
+            <button z-click="riskProfile = 'Low'; agent.send('How should I invest with a Low risk tolerance?')" class="chip {riskProfile === 'Low' ? 'active' : ''}">Low</button>
+            <button z-click="riskProfile = 'Medium'; agent.send('Recommend a Medium risk asset allocation')" class="chip {riskProfile === 'Medium' ? 'active' : ''}">Medium</button>
+            <button z-click="riskProfile = 'High'; agent.send('What is a high-growth aggressive portfolio allocation?')" class="chip {riskProfile === 'High' ? 'active' : ''}">High</button>
+          </div>
+        </div>
+
+        <div class="sidebar-card">
+          <div class="card-header-icon">
+            <span class="material-symbols-outlined">monitoring</span>
+            <h2>Stock Simulator</h2>
+          </div>
+          <p class="section-desc">Analyze specific ticker metrics using tools</p>
+          <div class="input-inline">
+            <input type="text" z-bind="ticker" placeholder="e.g. AAPL, MSFT, TSLA" />
+            <button z-click="agent.send('Run a simulated stock analysis for ' + ticker)" class="btn-action-icon">
+              <span class="material-symbols-outlined">search</span>
+            </button>
+          </div>
+          <div class="quick-tickers">
+            <button z-click="ticker = 'MSFT'; agent.send('Analyze MSFT stock metrics')">MSFT</button>
+            <button z-click="ticker = 'GOOGL'; agent.send('Analyze GOOGL stock metrics')">GOOGL</button>
+            <button z-click="ticker = 'SPY'; agent.send('Analyze SPY ETF metrics')">SPY</button>
+          </div>
+        </div>
+
+        <div class="sidebar-card">
+          <div class="card-header-icon">
+            <span class="material-symbols-outlined">calculate</span>
+            <h2>Projection Engine</h2>
+          </div>
+          <p class="section-desc">Calculate future values with compound math</p>
+          <div class="form-inputs">
+            <div class="input-field">
+              <label>Starting Principal ($)</label>
+              <input type="text" z-bind="principalAmount" />
+            </div>
+            <div class="input-field">
+              <label>Years to Invest</label>
+              <input type="text" z-bind="yearsCount" />
+            </div>
+            <button z-click="agent.send('Run a compound interest projection with a principal of ' + principalAmount + ' over ' + yearsCount + ' years and monthly savings of 500 at 8% return')" class="btn-calculate">
+              Calculate Future Value
+            </button>
+          </div>
+        </div>
+      </aside>
+
+      <!-- Center Chat Area -->
+      <main class="chat-main">
+        <div class="chat-messages-container">
+          <div class="welcome-message" z-if="messages.length === 0">
+            <div class="welcome-badge">
+              <span class="material-symbols-outlined sparkle">auto_awesome</span>
+              <span>Aura Intelligence Engine</span>
+            </div>
+            <h1>Simulate & Optimize Your Wealth</h1>
+            <p>Aura uses server-side financial calculators, asset allocators, and stock scanners to construct optimal strategies.</p>
+            <div class="presets-grid">
+              <button z-click="agent.send('Simulate a portfolio growth starting with $20,000 for 15 years with a high risk profile')">
+                "Simulate a $20k high risk portfolio for 15 years"
+              </button>
+              <button z-click="agent.send('Which stock is best for passive income between Apple and Microsoft?')">
+                "Compare Apple vs Microsoft for dividends"
+              </button>
+            </div>
+          </div>
+
+          <div class="chat-list">
+            <div z-each="msg in messages" class="chat-bubble-wrapper {msg.role}">
+              <div class="chat-bubble">
+                <p>{msg.content}</p>
+                <div z-if="msg.status === 'running'" class="bubble-loader">
+                  <div class="gemini-shimmer"></div>
+                  <span>Aura is calculating returns and scanning market metrics...</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Chat Input Bar -->
+        <div class="chat-input-bar">
+          <div class="input-wrapper">
+            <input type="text" z-bind="prompt" placeholder="Ask Aura about asset allocations, compound growth..." />
+            <button z-click="agent.send(prompt); prompt = ''" class="btn-submit">
+              <span class="material-symbols-outlined">send</span>
+            </button>
+          </div>
+        </div>
+      </main>
+    </div>
+  </div>
+</template>
+
+<style>
+  :root {
+    --bg-main: #131314;
+    --sidebar-bg: #1e1f20;
+    --card-bg: #2b2c2f;
+    --border: rgba(255, 255, 255, 0.05);
+    --accent: #a8c7fa;
+    --accent-hover: #7cacf8;
+    --bubble-user: #2e2f30;
+    --text-primary: #e3e3e3;
+    --text-secondary: #c4c7c5;
+    --text-muted: #8e918f;
+    --font-family: 'Outfit', sans-serif;
+  }
+
+  body {
+    background-color: var(--bg-main);
+    color: var(--text-primary);
+    margin: 0;
+    font-family: var(--font-family);
+  }
+
+  .app-container {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    overflow: hidden;
+  }
+
+  /* Header styles */
+  .app-header {
+    height: 64px;
+    padding: 0 24px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background-color: var(--bg-main);
+    z-index: 10;
+  }
+
+  .logo-area {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .logo-icon {
+    font-size: 28px;
+    background: linear-gradient(135deg, #7cacf8, #c5b3e6);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+
+  .logo-text {
+    font-size: 20px;
+    font-weight: 600;
+    color: var(--text-primary);
+    letter-spacing: -0.3px;
+  }
+
+  .btn-console {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--accent);
+    background: transparent;
+    border: 1px solid var(--border);
+    padding: 8px 16px;
+    border-radius: 20px;
+    text-decoration: none;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    transition: all 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+
+  .btn-console:hover {
+    background: rgba(168, 199, 250, 0.08);
+    border-color: var(--accent);
+  }
+
+  .btn-console span.material-symbols-outlined {
+    font-size: 18px;
+  }
+
+  /* Layout body */
+  .layout-body {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+  }
+
+  /* Workspace Sidebar */
+  .workspace-sidebar {
+    width: 320px;
+    background-color: var(--sidebar-bg);
+    border-right: 1px solid var(--border);
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    overflow-y: auto;
+    flex-shrink: 0;
+  }
+
+  .sidebar-card {
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 20px;
+  }
+
+  .card-header-icon {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 6px;
+  }
+
+  .card-header-icon span {
+    font-size: 20px;
+    color: var(--accent);
+  }
+
+  .card-header-icon h2 {
+    font-size: 15px;
+    font-weight: 500;
+    margin: 0;
+  }
+
+  .section-desc {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-bottom: 14px;
+    line-height: 1.5;
+  }
+
+  .chips-row {
+    display: flex;
+    gap: 6px;
+  }
+
+  .chip {
+    flex: 1;
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+    padding: 8px 10px;
+    border-radius: 16px;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    font-family: var(--font-family);
+    transition: all 0.2s;
+    text-align: center;
+  }
+
+  .chip:hover {
+    background: rgba(255, 255, 255, 0.04);
+  }
+
+  .chip.active {
+    background: rgba(168, 199, 250, 0.08);
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+
+  .input-inline {
+    display: flex;
+    gap: 8px;
+  }
+
+  .input-inline input {
+    flex: 1;
+    padding: 10px 14px;
+    background: var(--bg-main);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    color: white;
+    font-size: 13.5px;
+    outline: none;
+    font-family: var(--font-family);
+  }
+
+  .btn-action-icon {
+    background: rgba(168, 199, 250, 0.08);
+    border: 1px solid var(--border);
+    color: var(--accent);
+    width: 38px;
+    height: 38px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+  }
+
+  .btn-action-icon:hover {
+    background: rgba(168, 199, 250, 0.15);
+  }
+
+  .quick-tickers {
+    display: flex;
+    gap: 6px;
+    margin-top: 10px;
+  }
+
+  .quick-tickers button {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+    padding: 6px 12px;
+    border-radius: 8px;
+    font-size: 11px;
+    cursor: pointer;
+    font-family: var(--font-family);
+  }
+
+  .quick-tickers button:hover {
+    color: var(--text-secondary);
+    border-color: var(--text-muted);
+  }
+
+  .form-inputs {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .input-field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .input-field label {
+    font-size: 11px;
+    color: var(--text-muted);
+    font-weight: 500;
+  }
+
+  .input-field input {
+    padding: 10px 14px;
+    background: var(--bg-main);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    color: white;
+    font-size: 13.5px;
+    outline: none;
+    font-family: var(--font-family);
+  }
+
+  .btn-calculate {
+    background: var(--accent);
+    color: #131314;
+    border: none;
+    padding: 12px;
+    border-radius: 12px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    font-family: var(--font-family);
+    transition: all 0.2s;
+    margin-top: 4px;
+    text-align: center;
+  }
+
+  .btn-calculate:hover {
+    background: var(--accent-hover);
+  }
+
+  /* Chat area */
+  .chat-main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    background-color: var(--bg-main);
+  }
+
+  .chat-messages-container {
+    flex: 1;
+    overflow-y: auto;
+    padding: 40px;
+  }
+
+  .welcome-message {
+    max-width: 580px;
+    margin: 80px auto 0;
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .welcome-badge {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 16px;
+    background: linear-gradient(135deg, rgba(124, 172, 248, 0.1), rgba(197, 179, 230, 0.1));
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--accent);
+    margin-bottom: 24px;
+  }
+
+  .sparkle {
+    font-size: 16px;
+    background: linear-gradient(135deg, #7cacf8, #c5b3e6);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+
+  .welcome-message h1 {
+    font-size: 34px;
+    font-weight: 500;
+    margin-bottom: 12px;
+    letter-spacing: -0.5px;
+  }
+
+  .welcome-message p {
+    color: var(--text-secondary);
+    font-size: 16px;
+    line-height: 1.6;
+    margin-bottom: 28px;
+  }
+
+  .presets-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 10px;
+    width: 100%;
+  }
+
+  .presets-grid button {
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+    padding: 14px 20px;
+    border-radius: 16px;
+    font-size: 13.5px;
+    font-weight: 500;
+    cursor: pointer;
+    font-family: var(--font-family);
+    transition: all 0.2s;
+    text-align: left;
+  }
+
+  .presets-grid button:hover {
+    background: rgba(168, 199, 250, 0.04);
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+
+  .chat-list {
+    max-width: 800px;
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+  }
+
+  .chat-bubble-wrapper {
+    display: flex;
+    flex-direction: column;
+    max-width: 85%;
+  }
+
+  .chat-bubble-wrapper.user {
+    align-self: flex-end;
+  }
+
+  .chat-bubble-wrapper.model {
+    align-self: flex-start;
+    padding-left: 40px;
+    position: relative;
+  }
+
+  .chat-bubble-wrapper.model::before {
+    content: 'insights';
+    font-family: 'Material Symbols Outlined';
+    font-size: 22px;
+    position: absolute;
+    left: 8px;
+    top: 2px;
+    background: linear-gradient(135deg, #7cacf8, #c5b3e6);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+
+  .chat-bubble {
+    padding: 4px 0;
+    font-size: 15.5px;
+    line-height: 1.6;
+  }
+
+  .chat-bubble p {
+    margin: 0;
+    white-space: pre-wrap;
+  }
+
+  .chat-bubble-wrapper.user .chat-bubble {
+    background: var(--bubble-user);
+    color: var(--text-primary);
+    padding: 12px 20px;
+    border-radius: 20px;
+  }
+
+  .bubble-loader {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-top: 16px;
+    font-size: 13px;
+    color: var(--text-muted);
+  }
+
+  .gemini-shimmer {
+    height: 4px;
+    width: 240px;
+    border-radius: 2px;
+    background: linear-gradient(90deg, #7cacf8, #c5b3e6, #f2b8b5, #7cacf8);
+    background-size: 200% 100%;
+    animation: loadingSlide 1.5s infinite linear;
+  }
+
+  @keyframes loadingSlide {
+    0% { background-position: 0% 0%; }
+    100% { background-position: -200% 0%; }
+  }
+
+  /* Chat Input Bar (Gemini pill) */
+  .chat-input-bar {
+    padding: 24px 40px;
+    display: flex;
+    justify-content: center;
+  }
+
+  .input-wrapper {
+    position: relative;
+    display: flex;
+    align-items: center;
+    width: 100%;
+    max-width: 800px;
+    background: var(--sidebar-bg);
+    border-radius: 28px;
+    padding: 4px 6px;
+    border: 1px solid transparent;
+    transition: all 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+
+  .input-wrapper:focus-within {
+    border-color: var(--accent);
+    background: #25262a;
+  }
+
+  .input-wrapper input {
+    flex: 1;
+    background: transparent;
+    border: none;
+    color: white;
+    padding: 14px 20px;
+    font-size: 15px;
+    outline: none;
+    font-family: var(--font-family);
+  }
+
+  .btn-submit {
+    background: transparent;
+    border: none;
+    color: var(--accent);
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .btn-submit:hover {
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--accent-hover);
+  }
+
+  .btn-submit span {
+    font-size: 24px;
+  }
+</style>

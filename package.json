@@ -1,0 +1,44 @@
+{
+  "name": "rezon",
+  "version": "1.0.0",
+  "description": "A compiler-based, AI-first web framework for building reactive agent-native apps with LLM tool-calling.",
+  "type": "module",
+  "main": "index.js",
+  "bin": {
+    "rezon": "./bin/zenith.js"
+  },
+  "files": [
+    "bin",
+    "src",
+    "index.js",
+    "README.md"
+  ],
+  "scripts": {
+    "dev": "node bin/zenith.js dev",
+    "build": "node bin/zenith.js build"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "@google/generative-ai": "^0.21.0",
+    "express": "^4.19.2",
+    "chokidar": "^3.6.0",
+    "pg": "^8.11.5",
+    "express-rate-limit": "^7.2.0"
+  },
+  "author": "",
+  "license": "MIT",
+  "keywords": [
+    "ai",
+    "framework",
+    "compiler",
+    "gemini",
+    "reactive",
+    "sfc",
+    "agent",
+    "llm",
+    "tool-calling",
+    "rezon"
+  ]
+}
