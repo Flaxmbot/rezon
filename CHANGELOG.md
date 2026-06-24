@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.2] - 2026-06-24
+
+### Added
+- Implemented a generic OpenAI-compatible completions adapter in Rezon server runtime to allow any standard LLM provider (like OpenRouter, DashScope, Ollama, OpenAI) to run alongside Gemini.
+- Added SFC compiler support to extract custom agent configurations (`agent.provider`, `agent.model`, and `agent.baseUrl`) from the Zenith script block.
+- Implemented client-side passing of `llmConfig` in chat POST requests to allow dynamic model and key switching.
+- Created **Nirikshak** (Hindi/Sanskrit for "Inspector"), a state-of-the-art codebase refactorer, explorer, and DevOps agent workspace under the `/nirikshak` folder.
+
 ## [1.0.1] - 2026-06-24
 
 ### Added

@@ -386,6 +386,9 @@ async function loadRouteModule(server, routeName) {
     server.registerPage(routeName, {
       systemPrompt: pageModule.agentConfig.systemPrompt,
       agentName: pageModule.agentConfig.name,
+      provider: pageModule.agentConfig.provider,
+      model: pageModule.agentConfig.model,
+      baseUrl: pageModule.agentConfig.baseUrl,
       tools: pageModule.tools
     });
     console.log(`  ✅ Registered agent/tools for route: /${routeName}`);

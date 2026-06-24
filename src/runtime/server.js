@@ -77,14 +77,14 @@ export class ZenithServer {
     this.rateLimitWindowMs = rateLimitWindowMs;
     this.rateLimitMaxRequests = rateLimitMaxRequests;
 
-    this.enableDashboard = enableDashboard !== undefined 
-      ? enableDashboard 
+    this.enableDashboard = enableDashboard !== undefined
+      ? enableDashboard
       : (process.env.NODE_ENV !== 'production' && String(process.env.NODE_ENV).toLowerCase() !== 'prod');
 
     if (sessionSecret) {
       setSessionSecret(sessionSecret);
     }
-    
+
     // Tools map
     this.tools = new Map();
     tools.forEach(t => this.tools.set(t.name, t));
@@ -94,7 +94,7 @@ export class ZenithServer {
 
     this.app = express();
     this.app.use(express.json());
-    
+
     // Block Dev Console routes if dashboard is not enabled
     this.app.use((req, res, next) => {
       const isConsolePath = req.path.startsWith('/__zenith') || req.path.startsWith('/api/dashboard');
@@ -114,7 +114,7 @@ export class ZenithServer {
     this.setupRoutes();
   }
 
-  registerPage(routeName, { systemPrompt, agentName, tools = [] }) {
+  registerPage(routeName, { systemPrompt, agentName, provider, model, baseUrl, tools = [] }) {
     console.log(`[ZenithServer] Registering page "${routeName}" with ${tools.length} tools:`, tools.map(t => t.name));
     const pageTools = new Map();
     tools.forEach(t => pageTools.set(t.name, t));
@@ -122,6 +122,9 @@ export class ZenithServer {
     this.pages.set(routeName, {
       systemPrompt: systemPrompt || this.systemPrompt,
       agentName: agentName || this.agentName,
+      provider: provider || null,
+      model: model || null,
+      baseUrl: baseUrl || null,
       tools: pageTools
     });
   }
@@ -177,7 +180,7 @@ export class ZenithServer {
 
     // 2. Chat POST API
     this.app.post('/api/chat', async (req, res) => {
-      const { threadId, threadToken, message, agent } = req.body;
+      const { threadId, threadToken, message, agent, llmConfig } = req.body;
       let activeThreadId = threadId;
 
       if (typeof message !== 'string' || message.length > this.maxMessageLength) {
@@ -195,9 +198,9 @@ export class ZenithServer {
 
       // Save user message to database
       await db.addMessage(activeThreadId, 'user', message);
-      
+
       // Execute the agent async loop (so SSE client can stream)
-      this.runAgentLoop(activeThreadId, message, agent).catch(err => {
+      this.runAgentLoop(activeThreadId, message, agent, llmConfig).catch(err => {
         console.error('Agent loop failed:', err);
         sendSSE(activeThreadId, 'error', { error: err.message });
       });
@@ -276,19 +279,185 @@ export class ZenithServer {
   }
 
   // Core Agentic LLM execution loop
-  async runAgentLoop(threadId, latestUserMessage, pageName = 'index') {
-    if (!this.apiKey) {
-      throw new Error('GEMINI_API_KEY is not set.');
-    }
-
-    const genAI = new GoogleGenerativeAI(this.apiKey);
-    
+  async runAgentLoop(threadId, latestUserMessage, pageName = 'index', llmConfig = null) {
     // Resolve page configuration
     const page = this.pages.get(pageName) || {
       systemPrompt: this.systemPrompt,
       agentName: this.agentName,
-      tools: this.tools
+      tools: this.tools,
+      provider: null,
+      model: null,
+      baseUrl: null
     };
+
+    // Determine config from hierarchy: client request -> page configuration -> environment variables -> defaults
+    const clientConfig = llmConfig || {};
+    const provider = clientConfig.provider || page.provider || process.env.REZON_LLM_PROVIDER || 'gemini';
+    const modelName = clientConfig.model || page.model || process.env.REZON_LLM_MODEL || (provider === 'gemini' ? 'gemini-2.5-flash' : 'gpt-4o');
+    const baseUrl = clientConfig.baseUrl || page.baseUrl || process.env.REZON_LLM_BASE_URL || '';
+    
+    let apiKey = '';
+    if (provider === 'gemini') {
+      apiKey = this.apiKey || clientConfig.apiKey || process.env.REZON_LLM_API_KEY || process.env.GEMINI_API_KEY;
+    } else {
+      apiKey = clientConfig.apiKey || process.env.REZON_LLM_API_KEY || process.env.OPENAI_API_KEY || '';
+    }
+
+    if (provider !== 'gemini') {
+      // 1. Retrieve message history from database
+      const dbMessages = await db.getMessages(threadId);
+
+      // Assemble messages for OpenAI-compatible completions
+      const messages = [];
+      if (page.systemPrompt) {
+        messages.push({ role: 'system', content: page.systemPrompt });
+      }
+
+      // Convert dbMessages to OpenAI message history
+      dbMessages.forEach(msg => {
+        if (msg.role === 'user') {
+          messages.push({ role: 'user', content: msg.content });
+        } else if (msg.role === 'model') {
+          messages.push({ role: 'assistant', content: msg.content });
+        }
+      });
+
+      // Construct OpenAI compatible tools
+      const openAITools = page.tools.size > 0 ? Array.from(page.tools.values()).map(t => ({
+        type: 'function',
+        function: {
+          name: t.name,
+          description: t.description,
+          parameters: t.parameters
+        }
+      })) : undefined;
+
+      // Loop for tool execution
+      let loop = true;
+      let fullResponseText = '';
+      const executionStart = Date.now();
+
+      await db.addTrace(threadId, `Agent Started (${provider})`, 'prompt', 'completed', 0, { latestUserMessage });
+
+      while (loop) {
+        const llmStart = Date.now();
+        await db.addTrace(threadId, `LLM Generation Start (${provider})`, 'llm', 'running');
+
+        const fetchUrl = `${baseUrl.replace(/\/$/, '')}/chat/completions`;
+        const headers = {
+          'Content-Type': 'application/json',
+        };
+        if (apiKey) {
+          headers['Authorization'] = `Bearer ${apiKey}`;
+        }
+        
+        const body = {
+          model: modelName,
+          messages,
+          tools: openAITools,
+        };
+
+        const response = await fetch(fetchUrl, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(body)
+        });
+
+        if (!response.ok) {
+          const errText = await response.text();
+          throw new Error(`LLM API returned status ${response.status}: ${errText}`);
+        }
+
+        const data = await response.json();
+        const duration = Date.now() - llmStart;
+
+        const choice = data.choices?.[0];
+        const choiceMessage = choice?.message;
+        const textContent = choiceMessage?.content || '';
+        const toolCalls = choiceMessage?.tool_calls;
+
+        await db.addTrace(threadId, `LLM Generation Complete (${provider})`, 'llm', 'completed', duration, {
+          usage: data.usage || null,
+          candidateText: textContent || null,
+          functionCalls: toolCalls ? toolCalls.map(tc => ({ name: tc.function.name, args: JSON.parse(tc.function.arguments) })) : null
+        });
+
+        // Add assistant message to history array
+        const assistantMsg = { role: 'assistant', content: textContent };
+        if (toolCalls && toolCalls.length > 0) {
+          assistantMsg.tool_calls = toolCalls;
+        }
+        messages.push(assistantMsg);
+
+        if (toolCalls && toolCalls.length > 0) {
+          // Process the first tool call
+          const tc = toolCalls[0];
+          const toolName = tc.function.name;
+          let toolArgs = {};
+          try {
+            toolArgs = JSON.parse(tc.function.arguments);
+          } catch(e) {}
+
+          // Log and stream tool start
+          await db.addTrace(threadId, `Execute Tool: ${toolName}`, 'tool', 'running', 0, { args: toolArgs });
+          sendSSE(threadId, 'tool_start', { name: toolName, args: toolArgs });
+
+          // Execute tool securely on server
+          const tool = page.tools.get(toolName);
+          let result;
+          const toolStart = Date.now();
+
+          try {
+            if (!tool) throw new Error(`Tool ${toolName} not found`);
+            result = await tool.execute(toolArgs);
+            const toolDuration = Date.now() - toolStart;
+            await db.addTrace(threadId, `Tool ${toolName} Finished`, 'tool', 'completed', toolDuration, { result });
+            sendSSE(threadId, 'tool_end', { name: toolName, result });
+          } catch (err) {
+            result = { error: err.message };
+            const toolDuration = Date.now() - toolStart;
+            await db.addTrace(threadId, `Tool ${toolName} Failed`, 'tool', 'error', toolDuration, { error: err.message });
+            sendSSE(threadId, 'tool_end', { name: toolName, result });
+          }
+
+          // Add tool response to messages sequence
+          messages.push({
+            role: 'tool',
+            tool_call_id: tc.id,
+            name: toolName,
+            content: typeof result === 'string' ? result : JSON.stringify(result)
+          });
+
+          // Continue loop
+          continue;
+        }
+
+        if (textContent) {
+          fullResponseText += textContent;
+          sendSSE(threadId, 'token', { content: textContent });
+        }
+        loop = false;
+      }
+
+      // Save final response message in database
+      await db.addMessage(threadId, 'model', fullResponseText);
+
+      // Track final trace complete
+      const totalDuration = Date.now() - executionStart;
+      await db.addTrace(threadId, 'Agent Completed Response', 'response', 'completed', totalDuration, {
+        responseText: fullResponseText
+      });
+
+      // Stream finished signal
+      sendSSE(threadId, 'done', { fullContent: fullResponseText });
+      return;
+    }
+
+    if (!apiKey) {
+      throw new Error('GEMINI_API_KEY is not set.');
+    }
+
+    const genAI = new GoogleGenerativeAI(apiKey);
 
     // Assemble tools in Gemini format
     const geminiTools = page.tools.size > 0 ? [{
@@ -307,7 +476,7 @@ export class ZenithServer {
 
     // 1. Retrieve message history from database
     const dbMessages = await db.getMessages(threadId);
-    
+
     // 2. Format history for Gemini API
     const contents = [];
     dbMessages.forEach(msg => {
@@ -331,7 +500,7 @@ export class ZenithServer {
       // Call Gemini API
       const response = await model.generateContent({ contents });
       const duration = Date.now() - llmStart;
-      
+
       const candidate = response.response.candidates?.[0];
       const part = candidate?.content?.parts?.[0];
 
@@ -361,11 +530,11 @@ export class ZenithServer {
         const tool = page.tools.get(toolName);
         let result;
         const toolStart = Date.now();
-        
+
         try {
           if (!tool) throw new Error(`Tool ${toolName} not found`);
           result = await tool.execute(toolArgs);
-          
+
           const toolDuration = Date.now() - toolStart;
           await db.addTrace(threadId, `Tool ${toolName} Finished`, 'tool', 'completed', toolDuration, { result });
           sendSSE(threadId, 'tool_end', { name: toolName, result });
@@ -394,7 +563,7 @@ export class ZenithServer {
       // Handle text response
       if (part?.text) {
         fullResponseText += part.text;
-        
+
         // Stream text token to client
         sendSSE(threadId, 'token', { content: part.text });
       }

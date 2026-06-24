@@ -2,7 +2,7 @@
 class ZenithClient {
   constructor(initialState = {}) {
     const self = this;
-    
+
     // Create reactive state Proxy
     this.state = new Proxy(initialState, {
       set(target, key, value) {
@@ -14,16 +14,16 @@ class ZenithClient {
 
     this.updateScheduled = false;
     this.templates = new Map();
-    
+
     // Agent helper
     this.agent = {
       send: async (text) => {
         if (!text || text.trim() === '') return;
-        
+
         // Add user message to history
         const userMsg = { role: 'user', content: text, timestamp: new Date().toISOString() };
         self.state.messages = [...(self.state.messages || []), userMsg];
-        
+
         // Add placeholder for AI response
         const aiMsgId = Math.random().toString(36).substring(2, 11);
         const aiMsg = { id: aiMsgId, role: 'model', content: '', status: 'running', timestamp: new Date().toISOString() };
@@ -33,7 +33,7 @@ class ZenithClient {
           const threadId = self.state.threadId || localStorage.getItem('zenith_thread_id') || '';
           const threadToken = self.state.threadToken || localStorage.getItem('zenith_thread_token') || '';
           const routeName = window.location.pathname.replace(/^\/|\.html$/g, '') || 'index';
-          
+
           // Request conversation stream
           const response = await fetch('/api/chat', {
             method: 'POST',
@@ -48,7 +48,7 @@ class ZenithClient {
 
           if (!response.ok) throw new Error('Network response was not ok');
           const data = await response.json();
-          
+
           // Save thread ID and token signature
           if (data.threadId) {
             self.state.threadId = data.threadId;
@@ -63,7 +63,7 @@ class ZenithClient {
 
           eventSource.onmessage = (event) => {
             const chunk = JSON.parse(event.data);
-            
+
             if (chunk.type === 'token') {
               // Append LLM token text
               self.updateMessageContent(aiMsgId, chunk.content, 'running');
@@ -126,13 +126,13 @@ class ZenithClient {
       const expression = el.getAttribute('z-each');
       const commentMarker = document.createComment(`z-each:${expression}`);
       el.parentNode.insertBefore(commentMarker, el);
-      
+
       this.templates.set(commentMarker, {
         element: el,
         expression,
         rendered: []
       });
-      
+
       el.remove(); // Remove template element from DOM
     });
 
@@ -192,7 +192,7 @@ class ZenithClient {
       items.forEach((item, index) => {
         const clone = tmpl.element.cloneNode(true);
         clone.removeAttribute('z-each');
-        
+
         // Set local scope on the clone
         const context = {
           ...this.state,
@@ -321,21 +321,21 @@ class ZenithClient {
   resolveValue(expr, context) {
     expr = expr.trim();
     if (!expr) return '';
-    
+
     // Check for string literals: 'abc' or "abc"
     if ((expr.startsWith("'") && expr.endsWith("'")) || (expr.startsWith('"') && expr.endsWith('"'))) {
       return expr.slice(1, -1);
     }
-    
+
     // Check for number literals
     if (/^\d+$/.test(expr)) {
       return parseInt(expr, 10);
     }
-    
+
     // Check for booleans
     if (expr === 'true') return true;
     if (expr === 'false') return false;
-    
+
     // Check for ternary: condition ? val1 : val2
     const ternaryMatch = expr.match(/^([^?]+)\s*\?\s*([^:]+)\s*:\s*(.*)$/);
     if (ternaryMatch) {

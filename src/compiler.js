@@ -160,6 +160,15 @@ export default server.app;
     const promptMatch = script.match(/agent\.systemPrompt\s*=\s*(['"`])([\s\S]*?)\1/);
     if (promptMatch) agentConfig.systemPrompt = promptMatch[2];
 
+    const providerMatch = script.match(/agent\.provider\s*=\s*(['"`])(.*?)\1/);
+    if (providerMatch) agentConfig.provider = providerMatch[2];
+
+    const modelMatch = script.match(/agent\.model\s*=\s*(['"`])(.*?)\1/);
+    if (modelMatch) agentConfig.model = modelMatch[2];
+
+    const baseUrlMatch = script.match(/agent\.baseUrl\s*=\s*(['"`])(.*?)\1/);
+    if (baseUrlMatch) agentConfig.baseUrl = baseUrlMatch[2];
+
     // 2. Find and extract server tools (reordering before clientState extraction to prevent scope leak):
     let index = 0;
     let cleanScript = script;

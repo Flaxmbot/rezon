@@ -1,0 +1,902 @@
+<script type="zenith">
+  agent.name = "Nirikshak";
+  agent.systemPrompt = "You are Nirikshak (निरीक्षक), an elite codebase inspector, refactoring agent, and DevOps copilot. You help developers manage their local workspace. You have access to server-side tools: listProjectFiles, readProjectFile, writeProjectFile, runProjectTests, runProjectCommand.\n\nCRITICAL STATE MUTATION RULES:\n- When asked to scan/load the workspace files: Call listProjectFiles(projectPath) and assign the array of file paths to the reactive state variable 'files'. Also set 'terminalLogs' to a success message.\n- When asked to read/open a file: Call readProjectFile(projectPath, filePath), assign the file path to 'activeFile', and the read content to 'activeFileContent'. Also set 'terminalLogs' to a confirmation.\n- When asked to save a file: Call writeProjectFile(projectPath, filePath, content), and set 'terminalLogs' to a success message.\n- When asked to run tests: Call runProjectTests(projectPath) and assign the stdout/stderr to 'terminalLogs'.\n- When asked to run git status or build: Call runProjectCommand(projectPath, command) and assign the logs to 'terminalLogs'.\n\nAlways explain what tool you are calling and what changes you are making. Be precise and keep the UI state in sync!";
+  agent.provider = "openrouter";
+  agent.model = "qwen/qwen-2.5-coder-32b-instruct";
+  agent.baseUrl = "https://openrouter.ai/api/v1";
+  let connected = false;
+  let provider = 'openrouter';
+  let apiKey = '';
+  let baseUrl = 'https://openrouter.ai/api/v1';
+  let model = 'qwen/qwen-2.5-coder-32b-instruct';
+  let projectPath = '';
+  let activeFile = '';
+  let activeFileContent = '';
+  let terminalLogs = '';
+  let isExecuting = false;
+  let files = [];
+  let messages = [];
+  let prompt = '';
+
+  // Server Tools
+  server tool listProjectFiles(projectPath) {
+    const fs = await import('fs');
+    const path = await import('path');
+    
+    function walk(dir, list = []) {
+      if (!fs.existsSync(dir)) return list;
+      const filesList = fs.readdirSync(dir);
+      for (const file of filesList) {
+        if (['node_modules', '.git', '.zenith', 'dist', 'build', '.agents'].includes(file)) continue;
+        const res = path.resolve(dir, file);
+        const stat = fs.statSync(res);
+        if (stat.isDirectory()) {
+          walk(res, list);
+        } else {
+          if (/\.(js|jsx|ts|tsx|json|html|css|md|env|yml|yaml|txt|zenith)$/.test(file)) {
+            const rel = path.relative(projectPath, res).replace(/\\/g, '/');
+            list.push(rel);
+          }
+        }
+      }
+      return list;
+    }
+    
+    try {
+      const files = walk(projectPath);
+      return { success: true, files };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  }
+
+  server tool readProjectFile(projectPath, filePath) {
+    const fs = await import('fs');
+    const path = await import('path');
+    const fullPath = path.resolve(projectPath, filePath);
+    try {
+      const content = fs.readFileSync(fullPath, 'utf-8');
+      return { success: true, content };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  }
+
+  server tool writeProjectFile(projectPath, filePath, content) {
+    const fs = await import('fs');
+    const path = await import('path');
+    const fullPath = path.resolve(projectPath, filePath);
+    try {
+      fs.mkdirSync(path.dirname(fullPath), { recursive: true });
+      fs.writeFileSync(fullPath, content, 'utf-8');
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  }
+
+  server tool runProjectTests(projectPath) {
+    const { execSync } = await import('child_process');
+    try {
+      const stdout = execSync('npm test', { cwd: projectPath, encoding: 'utf-8', timeout: 15000 });
+      return { success: true, log: stdout };
+    } catch (err) {
+      return { success: false, log: err.stdout || err.message };
+    }
+  }
+
+  server tool runProjectCommand(projectPath, command) {
+    const { execSync } = await import('child_process');
+    try {
+      const stdout = execSync(command, { cwd: projectPath, encoding: 'utf-8', timeout: 15000 });
+      return { success: true, log: stdout };
+    } catch (err) {
+      return { success: false, log: err.stdout || err.message };
+    }
+  }
+</script>
+
+<template>
+  <div class="app-container">
+    <!-- 1. Connection / Login Page -->
+    <div class="auth-card" z-if="connected === false">
+      <div class="auth-header">
+        <div class="logo-badge">निरीक्षक</div>
+        <h1>Nirikshak Workspace</h1>
+        <p>Configure Qwen-Coder or any OpenAI-compatible agent to inspect & refactor local codebases</p>
+      </div>
+
+      <div class="form-group">
+        <label>LLM Provider</label>
+        <select z-bind="provider" onchange="window.appUpdateProvider(this.value)">
+          <option value="openrouter">OpenRouter (Qwen-Coder)</option>
+          <option value="dashscope">Alibaba DashScope</option>
+          <option value="ollama">Ollama (Local Qwen)</option>
+          <option value="openai">Custom OpenAI Endpoint</option>
+          <option value="gemini">Google Gemini (Default)</option>
+        </select>
+      </div>
+
+      <div class="form-group" z-if="provider !== 'ollama' && provider !== 'gemini'">
+        <label>API Auth Key</label>
+        <input type="password" z-bind="apiKey" placeholder="sk-..." />
+      </div>
+
+      <div class="form-group" z-if="provider !== 'gemini'">
+        <label>Base URL Endpoint</label>
+        <input type="text" z-bind="baseUrl" placeholder="https://..." />
+      </div>
+
+      <div class="form-group" z-if="provider !== 'gemini'">
+        <label>LLM Model</label>
+        <input type="text" z-bind="model" placeholder="qwen/qwen-2.5-coder-32b-instruct" />
+      </div>
+
+      <div class="form-group">
+        <label>Local Codebase Path (Absolute)</label>
+        <input type="text" z-bind="projectPath" placeholder="C:\path\to\your\codebase" />
+      </div>
+
+      <button class="btn-primary" onclick="window.appConnect()">Connect Workspace</button>
+    </div>
+
+    <!-- 2. Main Workspace Dashboard -->
+    <div class="dashboard-layout" z-if="connected === true">
+      <!-- Left Panel: File Explorer -->
+      <aside class="sidebar-panel">
+        <div class="sidebar-header">
+          <div class="logo-text">निरीक्षक</div>
+          <span class="active-badge">Active</span>
+        </div>
+        
+        <div class="model-info">
+          <span class="lbl">Model:</span>
+          <span class="val">{model}</span>
+        </div>
+
+        <div class="project-info">
+          <span class="lbl">Path:</span>
+          <span class="val path" title="{projectPath}">{projectPath}</span>
+        </div>
+
+        <div class="file-list-container">
+          <div class="section-title">
+            <span>Project Files</span>
+            <button class="icon-btn" onclick="window.appAgentScan()" title="Scan directory">
+              <span class="material-symbols-outlined">refresh</span>
+            </button>
+          </div>
+
+          <div class="file-list">
+            <div z-each="file in files">
+              <button class="file-item" onclick="window.appAgentOpenFile('{file}')">
+                <span class="material-symbols-outlined file-icon">description</span>
+                <span class="file-name">{file}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <button class="btn-secondary" onclick="window.appDisconnect()">Disconnect</button>
+      </aside>
+
+      <!-- Center Panel: Code Editor -->
+      <main class="editor-panel">
+        <div class="editor-header">
+          <div class="active-file-title">
+            <span class="material-symbols-outlined">draft</span>
+            <h3>{activeFile}</h3>
+          </div>
+          <button class="btn-primary btn-save" onclick="window.appAgentSaveFile()" z-if="activeFile !== ''">
+            <span class="material-symbols-outlined">save</span> Save Changes via Agent
+          </button>
+        </div>
+
+        <div class="editor-area">
+          <textarea z-bind="activeFileContent" placeholder="Ask Nirikshak to open a file, or select one from the explorer..."></textarea>
+        </div>
+
+        <div class="terminal-logs-panel">
+          <div class="terminal-header">
+            <span>DevOps Console Logs</span>
+            <div class="controls">
+              <button class="tab-btn" onclick="window.appAgentGitStatus()">Git Status</button>
+              <button class="tab-btn" onclick="window.appAgentRunBuild()">Build Project</button>
+              <button class="tab-btn" onclick="window.appAgentRunTests()">Run Tests</button>
+            </div>
+          </div>
+          <pre class="terminal-content">{terminalLogs}</pre>
+        </div>
+      </main>
+
+      <!-- Right Panel: Agent Chat Console -->
+      <section class="chat-panel">
+        <div class="chat-header">
+          <span class="material-symbols-outlined font-gradient">smart_toy</span>
+          <h3>Nirikshak Copilot</h3>
+        </div>
+
+        <div class="chat-messages">
+          <div z-each="msg in messages">
+            <div class="msg {msg.role}">
+              <div class="msg-header">
+                <span class="role-lbl" z-if="msg.role === 'user'">You</span>
+                <span class="role-lbl" z-if="msg.role === 'model'">Nirikshak</span>
+              </div>
+              <p class="msg-body">{msg.content}</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="chat-input-area">
+          <input type="text" z-bind="prompt" placeholder="Ask Nirikshak to inspect, edit, or test..." onkeydown="if(event.key === 'Enter') { window.appSendAgentMessage(); }" />
+          <button class="send-btn" onclick="window.appSendAgentMessage()">
+            <span class="material-symbols-outlined">send</span>
+          </button>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <script>
+    // Save LLM configuration
+    window.appConnect = function() {
+      const s = window.zenith.state;
+      if (!s.projectPath) {
+        alert("Please provide a valid workspace directory path.");
+        return;
+      }
+      
+      const config = {
+        provider: s.provider,
+        apiKey: s.apiKey,
+        baseUrl: s.baseUrl,
+        model: s.model
+      };
+      
+      localStorage.setItem('zenith_llm_config', JSON.stringify(config));
+      localStorage.setItem('nirikshak_project_path', s.projectPath);
+      s.connected = true;
+      
+      // Auto trigger agent scan
+      setTimeout(() => {
+        window.appAgentScan();
+      }, 500);
+    };
+
+    // Disconnect
+    window.appDisconnect = function() {
+      const s = window.zenith.state;
+      localStorage.removeItem('zenith_llm_config');
+      s.connected = false;
+      s.files = [];
+      s.activeFile = '';
+      s.activeFileContent = '';
+    };
+
+    // Auto-fill configuration endpoints based on LLM provider choice
+    window.appUpdateProvider = function(prov) {
+      const s = window.zenith.state;
+      s.provider = prov;
+      if (prov === 'openrouter') {
+        s.baseUrl = 'https://openrouter.ai/api/v1';
+        s.model = 'qwen/qwen-2.5-coder-32b-instruct';
+      } else if (prov === 'dashscope') {
+        s.baseUrl = 'https://dashscope.aliyuncs.com/compatible-mode/v1';
+        s.model = 'qwen-coder-turbo';
+      } else if (prov === 'ollama') {
+        s.baseUrl = 'http://localhost:11434/v1';
+        s.model = 'qwen2.5-coder:7b';
+      } else if (prov === 'openai') {
+        s.baseUrl = 'https://api.openai.com/v1';
+        s.model = 'gpt-4o';
+      } else if (prov === 'gemini') {
+        s.baseUrl = '';
+        s.model = 'gemini-2.5-flash';
+      }
+    };
+
+    // Agentic Actions - Triggered by UI elements sending instructions to the LLM agent
+    window.appAgentScan = function() {
+      const s = window.zenith.state;
+      s.terminalLogs = `📂 Requesting Nirikshak to scan codebase path: ${s.projectPath}...`;
+      window.zenith.agent.send(`Please scan the codebase directory at ${s.projectPath} and update the file list.`);
+    };
+
+    window.appAgentOpenFile = function(file) {
+      const s = window.zenith.state;
+      s.terminalLogs = `📄 Requesting Nirikshak to load file: ${file}...`;
+      window.zenith.agent.send(`Please open the file ${file} located at ${s.projectPath} and load its contents.`);
+    };
+
+    window.appAgentSaveFile = function() {
+      const s = window.zenith.state;
+      if (!s.activeFile) return;
+      s.terminalLogs = `💾 Requesting Nirikshak to save changes to: ${s.activeFile}...`;
+      window.zenith.agent.send(`Please save the following content back to the active file ${s.activeFile} at project path ${s.projectPath}:\n\n${s.activeFileContent}`);
+    };
+
+    window.appAgentRunTests = function() {
+      const s = window.zenith.state;
+      s.terminalLogs = `🧪 Requesting Nirikshak to run the project tests...`;
+      window.zenith.agent.send(`Please run the tests in the project at path ${s.projectPath} and report the results.`);
+    };
+
+    window.appAgentRunBuild = function() {
+      const s = window.zenith.state;
+      s.terminalLogs = `🏗️ Requesting Nirikshak to run build...`;
+      window.zenith.agent.send(`Please execute the build command in the project at path ${s.projectPath} and report the outputs.`);
+    };
+
+    window.appAgentGitStatus = function() {
+      const s = window.zenith.state;
+      s.terminalLogs = `📊 Requesting Nirikshak to run git status...`;
+      window.zenith.agent.send(`Please run git status on the project at path ${s.projectPath} and show me the details.`);
+    };
+
+    // Send custom message to agent
+    window.appSendAgentMessage = function() {
+      const s = window.zenith.state;
+      if (!s.prompt || s.prompt.trim() === '') return;
+      const text = s.prompt;
+      s.prompt = '';
+      window.zenith.agent.send(text);
+    };
+
+    // Load configs from localstorage on start
+    document.addEventListener('DOMContentLoaded', () => {
+      setTimeout(() => {
+        const s = window.zenith.state;
+        const savedConfig = localStorage.getItem('zenith_llm_config');
+        const savedPath = localStorage.getItem('nirikshak_project_path');
+        
+        if (savedConfig) {
+          try {
+            const parsed = JSON.parse(savedConfig);
+            s.provider = parsed.provider || 'openrouter';
+            s.apiKey = parsed.apiKey || '';
+            s.baseUrl = parsed.baseUrl || 'https://openrouter.ai/api/v1';
+            s.model = parsed.model || 'qwen/qwen-2.5-coder-32b-instruct';
+            s.connected = true;
+          } catch (e) {}
+        }
+        
+        if (savedPath) {
+          s.projectPath = savedPath;
+        } else {
+          s.projectPath = '';
+        }
+        
+        if (s.connected && s.projectPath) {
+          window.appAgentScan();
+        }
+      }, 200);
+    });
+  </script>
+</template>
+
+<style>
+  :root {
+    --bg-main: #0c0d0f;
+    --panel-bg: #141519;
+    --border-color: rgba(255, 255, 255, 0.05);
+    --accent: #2e8bfe;
+    --accent-hover: #4e9cfe;
+    --text-primary: #e6edf3;
+    --text-muted: #8d96a0;
+    --terminal-bg: #090a0d;
+    --success: #3fb950;
+    --error: #f85149;
+    --font-sans: 'Outfit', -apple-system, BlinkMacSystemFont, sans-serif;
+  }
+
+  body {
+    background-color: var(--bg-main);
+    color: var(--text-primary);
+    font-family: var(--font-sans);
+    margin: 0;
+    padding: 0;
+    height: 100vh;
+    overflow: hidden;
+  }
+
+  .app-container {
+    height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+  }
+
+  /* --- Auth Card Screen --- */
+  .auth-card {
+    background-color: var(--panel-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 16px;
+    padding: 40px;
+    width: 100%;
+    max-width: 480px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+    backdrop-filter: blur(8px);
+  }
+
+  .auth-header {
+    text-align: center;
+    margin-bottom: 30px;
+  }
+
+  .logo-badge {
+    display: inline-block;
+    background: linear-gradient(135deg, var(--accent), #bd34fe);
+    color: #fff;
+    font-weight: 700;
+    font-size: 0.85rem;
+    padding: 4px 10px;
+    border-radius: 20px;
+    margin-bottom: 12px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+  }
+
+  .auth-header h1 {
+    font-size: 1.8rem;
+    margin: 0 0 8px 0;
+  }
+
+  .auth-header p {
+    color: var(--text-muted);
+    font-size: 0.9rem;
+    margin: 0;
+  }
+
+  .form-group {
+    margin-bottom: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .form-group label {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  .form-group input,
+  .form-group select {
+    background-color: var(--bg-main);
+    border: 1px solid var(--border-color);
+    color: var(--text-primary);
+    padding: 12px 14px;
+    border-radius: 8px;
+    font-family: inherit;
+    font-size: 0.95rem;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+
+  .form-group input:focus,
+  .form-group select:focus {
+    border-color: var(--accent);
+  }
+
+  .btn-primary {
+    width: 100%;
+    background-color: var(--accent);
+    color: #fff;
+    border: none;
+    padding: 14px;
+    border-radius: 8px;
+    font-family: inherit;
+    font-weight: 600;
+    font-size: 1rem;
+    cursor: pointer;
+    transition: background-color 0.2s;
+  }
+
+  .btn-primary:hover {
+    background-color: var(--accent-hover);
+  }
+
+  /* --- Dashboard Layout --- */
+  .dashboard-layout {
+    display: flex;
+    width: 100%;
+    height: 100%;
+  }
+
+  /* Sidebar Explorer Panel */
+  .sidebar-panel {
+    width: 280px;
+    background-color: var(--panel-bg);
+    border-right: 1px solid var(--border-color);
+    display: flex;
+    flex-direction: column;
+    padding: 20px;
+  }
+
+  .sidebar-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 24px;
+  }
+
+  .logo-text {
+    font-weight: 700;
+    font-size: 1.3rem;
+    background: linear-gradient(135deg, var(--accent), #bd34fe);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+
+  .active-badge {
+    background-color: rgba(63, 185, 80, 0.15);
+    color: var(--success);
+    font-size: 0.75rem;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 12px;
+  }
+
+  .model-info, .project-info {
+    font-size: 0.8rem;
+    margin-bottom: 12px;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .model-info .lbl, .project-info .lbl {
+    color: var(--text-muted);
+    font-weight: 600;
+    margin-bottom: 2px;
+  }
+
+  .model-info .val, .project-info .val {
+    color: var(--text-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .project-info .val.path {
+    font-family: monospace;
+    background-color: var(--bg-main);
+    padding: 4px 6px;
+    border-radius: 4px;
+    border: 1px solid var(--border-color);
+  }
+
+  .file-list-container {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    margin-top: 16px;
+    overflow: hidden;
+  }
+
+  .section-title {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    margin-bottom: 10px;
+  }
+
+  .icon-btn {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    padding: 2px;
+  }
+
+  .icon-btn:hover {
+    color: var(--text-primary);
+  }
+
+  .file-list {
+    flex: 1;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding-right: 4px;
+  }
+
+  .file-item {
+    width: 100%;
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    text-align: left;
+    transition: background-color 0.15s, color 0.15s;
+  }
+
+  .file-item:hover {
+    background-color: rgba(255, 255, 255, 0.03);
+    color: var(--text-primary);
+  }
+
+  .file-icon {
+    font-size: 1.1rem;
+  }
+
+  .file-name {
+    font-size: 0.85rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-family: monospace;
+  }
+
+  .btn-secondary {
+    background-color: transparent;
+    border: 1px solid var(--border-color);
+    color: var(--text-muted);
+    padding: 10px;
+    border-radius: 6px;
+    font-family: inherit;
+    font-weight: 600;
+    cursor: pointer;
+    margin-top: 16px;
+  }
+
+  .btn-secondary:hover {
+    border-color: var(--error);
+    color: var(--error);
+  }
+
+  /* Center Panel Editor */
+  .editor-panel {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    background-color: var(--bg-main);
+    border-right: 1px solid var(--border-color);
+    overflow: hidden;
+  }
+
+  .editor-header {
+    height: 60px;
+    border-bottom: 1px solid var(--border-color);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0 20px;
+    background-color: var(--panel-bg);
+  }
+
+  .active-file-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--text-primary);
+  }
+
+  .active-file-title h3 {
+    margin: 0;
+    font-size: 0.95rem;
+    font-family: monospace;
+  }
+
+  .btn-save {
+    width: auto;
+    padding: 6px 16px;
+    font-size: 0.85rem;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .editor-area {
+    flex: 1;
+    position: relative;
+    background-color: var(--bg-main);
+  }
+
+  .editor-area textarea {
+    width: 100%;
+    height: 100%;
+    background-color: var(--bg-main);
+    color: #e6edf3;
+    border: none;
+    outline: none;
+    padding: 20px;
+    font-family: 'Consolas', 'Fira Code', monospace;
+    font-size: 0.95rem;
+    line-height: 1.5;
+    resize: none;
+  }
+
+  /* Terminal logs */
+  .terminal-logs-panel {
+    height: 220px;
+    border-top: 1px solid var(--border-color);
+    background-color: var(--terminal-bg);
+    display: flex;
+    flex-direction: column;
+  }
+
+  .terminal-header {
+    height: 40px;
+    background-color: var(--panel-bg);
+    border-bottom: 1px solid var(--border-color);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0 16px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+  }
+
+  .terminal-header .controls {
+    display: flex;
+    gap: 8px;
+  }
+
+  .tab-btn {
+    background-color: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--border-color);
+    color: var(--text-muted);
+    font-size: 0.7rem;
+    font-family: inherit;
+    font-weight: 600;
+    padding: 4px 10px;
+    border-radius: 4px;
+    cursor: pointer;
+  }
+
+  .tab-btn:hover {
+    color: var(--text-primary);
+    border-color: var(--accent);
+  }
+
+  .terminal-content {
+    flex: 1;
+    margin: 0;
+    padding: 16px;
+    overflow-y: auto;
+    font-family: 'Consolas', monospace;
+    font-size: 0.85rem;
+    line-height: 1.4;
+    color: #7ee787;
+    white-space: pre-wrap;
+  }
+
+  /* Right Panel: Chat Console */
+  .chat-panel {
+    width: 320px;
+    background-color: var(--panel-bg);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .chat-header {
+    height: 60px;
+    border-bottom: 1px solid var(--border-color);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 0 20px;
+  }
+
+  .chat-header h3 {
+    margin: 0;
+    font-size: 0.95rem;
+  }
+
+  .chat-messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .msg {
+    max-width: 90%;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .msg.user {
+    align-self: flex-end;
+    align-items: flex-end;
+  }
+
+  .msg.model {
+    align-self: flex-start;
+  }
+
+  .msg-header {
+    margin-bottom: 4px;
+  }
+
+  .role-lbl {
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    letter-spacing: 0.5px;
+  }
+
+  .msg-body {
+    margin: 0;
+    font-size: 0.85rem;
+    line-height: 1.5;
+    padding: 10px 14px;
+    border-radius: 12px;
+  }
+
+  .msg.user .msg-body {
+    background-color: var(--accent);
+    color: #fff;
+    border-bottom-right-radius: 2px;
+  }
+
+  .msg.model .msg-body {
+    background-color: var(--bg-main);
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+    border-bottom-left-radius: 2px;
+  }
+
+  .chat-input-area {
+    padding: 16px 20px;
+    border-top: 1px solid var(--border-color);
+    display: flex;
+    gap: 8px;
+    background-color: var(--panel-bg);
+  }
+
+  .chat-input-area input {
+    flex: 1;
+    background-color: var(--bg-main);
+    border: 1px solid var(--border-color);
+    color: var(--text-primary);
+    border-radius: 8px;
+    padding: 10px 12px;
+    font-family: inherit;
+    font-size: 0.85rem;
+    outline: none;
+  }
+
+  .chat-input-area input:focus {
+    border-color: var(--accent);
+  }
+
+  .send-btn {
+    background-color: var(--accent);
+    color: #fff;
+    border: none;
+    width: 36px;
+    height: 36px;
+    border-radius: 8px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    cursor: pointer;
+    transition: background-color 0.2s;
+  }
+
+  .send-btn:hover {
+    background-color: var(--accent-hover);
+  }
+</style>
