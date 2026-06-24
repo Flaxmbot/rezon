@@ -1,6 +1,6 @@
 {
   "name": "rezon",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "A compiler-based, AI-first web framework for building reactive agent-native apps with LLM tool-calling.",
   "type": "module",
   "main": "index.js",

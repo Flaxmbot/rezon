@@ -1,0 +1,24 @@
+# Changelog
+
+All notable changes to this project will be documented in this file.
+
+## [1.0.1] - 2026-06-24
+
+### Added
+- Added `.env` and `.env.local` support to Rezon CLI to load environment variables (like `GEMINI_API_KEY`) without needing to manually run terminal configuration commands.
+- Updated `rezon init` scaffolding to automatically create `.env` and `.env.example` templates.
+- Added `.env` and `.env.local` to the default scaffolding `.gitignore` file to prevent accidental secret leaks.
+
+### Changed
+- Updated the root `README.md` and CLI startup/help messages to recommend configuration via `.env` files.
+- Improved the project starter setup instructions on initialization.
+
+---
+
+## [1.0.0] - 2026-06-24
+
+### Added
+- Initial public release of `rezon`.
+- Compiler-based reactive framework support for Single File Components.
+- Native integration with Gemini tool-calling capabilities.
+- Live development server with hot reloading.
