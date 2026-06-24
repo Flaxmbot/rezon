@@ -3,6 +3,45 @@
 import fs from 'fs';
 import path from 'path';
 
+// Load environment variables from .env files
+const envFiles = ['.env.local', '.env'];
+for (const file of envFiles) {
+  const envPath = path.resolve(process.cwd(), file);
+  if (fs.existsSync(envPath)) {
+    let loaded = false;
+    if (typeof process.loadEnvFile === 'function') {
+      try {
+        process.loadEnvFile(envPath);
+        loaded = true;
+      } catch (e) {
+        // Fallback
+      }
+    }
+    if (!loaded) {
+      try {
+        const content = fs.readFileSync(envPath, 'utf-8');
+        const lines = content.split(/\r?\n/);
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed || trimmed.startsWith('#')) continue;
+          const index = trimmed.indexOf('=');
+          if (index === -1) continue;
+          const key = trimmed.substring(0, index).trim();
+          let val = trimmed.substring(index + 1).trim();
+          if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+            val = val.substring(1, val.length - 1);
+          }
+          if (process.env[key] === undefined) {
+            process.env[key] = val;
+          }
+        }
+      } catch (err) {
+        // Ignore
+      }
+    }
+  }
+}
+
 const command = process.argv[2] || 'dev';
 const projectName = process.argv[3] || '.';
 
@@ -36,11 +75,12 @@ if (command === 'init') {
   fs.writeFileSync(path.join(targetDir, 'package.json'), JSON.stringify(pkg, null, 2) + '\n', 'utf-8');
 
   // 2. .gitignore
-  const gitignore = `node_modules/\n.zenith/\nzenith-db.json\n`;
+  const gitignore = `node_modules/\n.zenith/\nzenith-db.json\n.env\n.env.local\n`;
   fs.writeFileSync(path.join(targetDir, '.gitignore'), gitignore, 'utf-8');
 
-  // 3. .env.example
+  // 3. .env & .env.example
   const envExample = `# Get your key at https://aistudio.google.com/apikey\nGEMINI_API_KEY=your_key_here\n`;
+  fs.writeFileSync(path.join(targetDir, '.env'), envExample, 'utf-8');
   fs.writeFileSync(path.join(targetDir, '.env.example'), envExample, 'utf-8');
 
   // 4. Starter page
@@ -216,7 +256,7 @@ if (command === 'init') {
     console.log(`    cd ${relPath}`);
   }
   console.log(`    npm install`);
-  console.log(`    set GEMINI_API_KEY=your_key_here`);
+  console.log(`    # Add your GEMINI_API_KEY to the .env file`);
   console.log(`    npm run dev\n`);
   console.log(`  Then open \x1b[36mhttp://localhost:3000\x1b[0m\n`);
   process.exit(0);

@@ -36,10 +36,15 @@ cd my-app
 npm install
 ```
 
-Set your API key and run:
+Set your GEMINI_API_KEY in the `.env` file at the root of your project:
+
+```env
+GEMINI_API_KEY=your_key_here
+```
+
+Then run the development server:
 
 ```bash
-set GEMINI_API_KEY=your_key_here
 npm run dev
 ```
 
